@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>موقع الألعاب</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1a1a2e;
+            color: white;
+            text-align: center;
+            padding: 50px 20px;
+            margin: 0;
+        }
+        h1 {
+            color: #ff9f43;
+            margin-bottom: 40px;
+        }
+        .games-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            max-width: 400px;
+            margin: 0 auto;
+        }
+        .game-btn {
+            display: block;
+            padding: 20px;
+            text-decoration: none;
+            color: white;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid #ff9f43;
+            border-radius: 15px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+        .game-btn:hover {
+            background: #ff9f43;
+            color: #1a1a2e;
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+
+    <h1>مرحباً بك في موقع الألعاب 🎮</h1>
+    
+    <div class="games-container">
+        <!-- الرابط ده بيفتح لعبة البرتقالة -->
+        <a href="orange.html" class="game-btn">🍊 حماية البرتقالة</a>
+        
+        <!-- الرابط ده بيفتح اللعبة التانية (تأكد إن اسم الملف مطابق) -->
+        <a href="game2.html" class="game-btn">🚀 اللعبة الثانية</a>
+    </div>
+
+</body>
+</html>
