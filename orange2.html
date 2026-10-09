@@ -1,0 +1,967 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Orange Defender - حماية البرتقالة</title>
+    <style>
+        /* ==========================================================================
+           1. التنسيقات العامة وواجهة المستخدم (CSS & UI Styling)
+           ========================================================================== */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1a1a2e;
+            color: #ffffff;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            cursor: none; /* إخفاء الماوس الافتراضي لاستخدام المضرب */
+        }
+
+        /* الطبقات الشفافة الواجهات Overlay Screens */
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(15, 15, 26, 0.85);
+            backdrop-filter: blur(8px);
+            z-index: 10;
+            transition: opacity 0.3s ease;
+        }
+
+        .hidden {
+            display: none !important;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 30px 40px;
+            border-radius: 20px;
+            text-align: center;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.5);
+            max-width: 420px;
+            width: 90%;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            color: #ff9f43;
+            margin-bottom: 10px;
+            text-shadow: 0 4px 10px rgba(255, 159, 67, 0.4);
+        }
+
+        p {
+            font-size: 1.1rem;
+            color: #c8d6e5;
+            margin-bottom: 20px;
+            line-height: 1.5;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+
+        .btn-diff {
+            padding: 10px 18px;
+            border: 2px solid transparent;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn-diff.active {
+            border-color: #ff9f43;
+            background: rgba(255, 159, 67, 0.3);
+            box-shadow: 0 0 12px rgba(255, 159, 67, 0.5);
+        }
+
+        .btn-primary {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 12px;
+            background: linear-gradient(135deg, #ff9f43, #ee5253);
+            color: white;
+            font-size: 1.3rem;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 5px 15px rgba(238, 82, 83, 0.4);
+            transition: transform 0.1s ease, box-shadow 0.2s ease;
+        }
+
+        .btn-primary:active {
+            transform: scale(0.97);
+        }
+
+        /* شاشة HUD أثناء اللعب */
+        #hud {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            right: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            pointer-events: none;
+            z-index: 5;
+            font-weight: bold;
+        }
+
+        .hud-box {
+            background: rgba(0, 0, 0, 0.5);
+            padding: 8px 16px;
+            border-radius: 12px;
+            backdrop-filter: blur(4px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .hp-bar-container {
+            width: 180px;
+            height: 18px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            overflow: hidden;
+            margin-top: 4px;
+            border: 1px solid rgba(255,255,255,0.3);
+        }
+
+        .hp-bar-fill {
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, #10ac84, #1dd1a1);
+            transition: width 0.2s ease, background 0.3s ease;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin: 15px 0;
+            text-align: right;
+            font-size: 1.1rem;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <!-- شاشة معلومات أعلى اللعبة HUD -->
+        <div id="hud">
+            <div>
+                <div>صحة البرتقالة</div>
+                <div class="hp-bar-container">
+                    <div id="hp-fill" class="hp-bar-fill"></div>
+                </div>
+            </div>
+            <div class="hud-box">
+                <div>النقاط: <span id="score-text" style="color:#ff9f43;">0</span></div>
+                <div style="font-size: 0.85rem; color: #aaa;">أعلى نتيجة: <span id="best-score-text">0</span></div>
+            </div>
+            <div class="hud-box">
+                <div>الموجة: <span id="wave-text" style="color: #54a0ff;">1</span></div>
+                <div style="font-size: 0.85rem; color: #aaa;">الوقت: <span id="timer-text">00:00</span></div>
+            </div>
+        </div>
+
+        <!-- شاشة البداية Start Screen -->
+        <div id="start-screen" class="overlay">
+            <div class="card">
+                <h1>🍊 Orange Defender</h1>
+                <p>احمِ البرتقالة من هجمات النحل الشريرة! حرك المضرب واضربهم قبل ما يوصلوا ليها.</p>
+                
+                <p style="font-size:0.9rem; margin-bottom:8px; color:#ff9f43;">اختر مستوى الصعوبة:</p>
+                <div class="btn-group">
+                    <button class="btn-diff active" onclick="setDifficulty('easy')">سهل</button>
+                    <button class="btn-diff" onclick="setDifficulty('normal')">متوسط</button>
+                    <button class="btn-diff" onclick="setDifficulty('hard')">صعب</button>
+                </div>
+
+                <button class="btn-primary" onclick="startGame()">ابدأ اللعب 🚀</button>
+            </div>
+        </div>
+
+        <!-- شاشة نهاية اللعبة Game Over Screen -->
+        <div id="gameover-screen" class="overlay hidden">
+            <div class="card">
+                <h1 style="color: #ee5253;">انتهت اللعبة! 🐝</h1>
+                <p>البرتقالة اتدمرت بسب النحل!</p>
+
+                <div class="stats-grid">
+                    <div>النقاط النهائية:</div> <div id="go-score" style="color:#ff9f43; font-weight:bold;">0</div>
+                    <div>أعلى نتيجة:</div> <div id="go-best" style="color:#1dd1a1; font-weight:bold;">0</div>
+                    <div>الصمود:</div> <div id="go-time" style="color:#54a0ff; font-weight:bold;">00:00</div>
+                    <div>الموجات:</div> <div id="go-wave" style="color:#feca57; font-weight:bold;">1</div>
+                </div>
+
+                <button class="btn-primary" onclick="startGame()">العب تاني 🔄</button>
+            </div>
+        </div>
+
+        <!-- لوحة الرسم Canvas -->
+        <canvas id="gameCanvas"></canvas>
+    </div>
+
+    <script>
+        /* ==========================================================================
+           2. إعدادات اللعبة والمتغيرات الأساسية (Setup & Globals)
+           ========================================================================== */
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // عناصر UI
+        const startScreen = document.getElementById('start-screen');
+        const gameoverScreen = document.getElementById('gameover-screen');
+        const hpFill = document.getElementById('hp-fill');
+        const scoreText = document.getElementById('score-text');
+        const bestScoreText = document.getElementById('best-score-text');
+        const waveText = document.getElementById('wave-text');
+        const timerText = document.getElementById('timer-text');
+
+        // أبعاد Canvas والتكيف مع الشاشة
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            if (orange) {
+                orange.x = canvas.width / 2;
+                orange.y = canvas.height / 2;
+            }
+        }
+
+        // حالات اللعبة
+        let gameState = 'START'; // START, PLAYING, GAMEOVER
+        let selectedDifficulty = 'easy'; // easy, normal, hard
+        let diffSettings = {
+            easy: { beeSpeed: 1.8, spawnInterval: 2500, dmg: 10, maxBees: 6 },
+            normal: { beeSpeed: 2.6, spawnInterval: 1800, dmg: 12, maxBees: 10 },
+            hard: { beeSpeed: 3.5, spawnInterval: 1200, dmg: 15, maxBees: 15 }
+        };
+
+        // أحداث وتغيرات اللعبة
+        let score = 0;
+        let bestScore = localStorage.getItem('orange_defender_best') || 0;
+        let gameTime = 0;
+        let timerInterval = null;
+        let currentWave = 1;
+        let screenShakeTime = 0;
+        let comboCount = 0;
+        let comboTimer = null;
+
+        // المدخلات (موقع الماوس/اللمس)
+        const mouse = { x: -100, y: -100, isSwinging: false };
+
+        /* ==========================================================================
+           3. نظام الصوت الأصلي (Web Audio API Synthesizer)
+           ========================================================================== */
+        class SoundFX {
+            constructor() {
+                this.ctx = null;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                if (this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+
+            // صوت ضربة المضرب
+            playSwat() {
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(400, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(80, this.ctx.currentTime + 0.1);
+                gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.1);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.1);
+            }
+
+            // صوت موت النحلة
+            playBeeHit() {
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(600, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(150, this.ctx.currentTime + 0.15);
+                gain.gain.setValueAtTime(0.4, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.15);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.15);
+            }
+
+            // صوت ضرر البرتقالة
+            playDamage() {
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(120, this.ctx.currentTime);
+                osc.frequency.linearRampToValueAtTime(40, this.ctx.currentTime + 0.25);
+                gain.gain.setValueAtTime(0.5, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.25);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.25);
+            }
+
+            // صوت الكومبو
+            playCombo() {
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(523.25, this.ctx.currentTime); // C5
+                osc.frequency.setValueAtTime(659.25, this.ctx.currentTime + 0.08); // E5
+                osc.frequency.setValueAtTime(783.99, this.ctx.currentTime + 0.16); // G5
+                gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.3);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.3);
+            }
+
+            // صوت نهاية اللعبة Game Over
+            playGameOver() {
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(300, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(60, this.ctx.currentTime + 0.8);
+                gain.gain.setValueAtTime(0.5, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.8);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.8);
+            }
+        }
+
+        const sfx = new SoundFX();
+
+        /* ==========================================================================
+           4. الكائنات والشخصيات (Entities)
+           ========================================================================== */
+
+        // البرتقالة (الهدف المراد حمايته)
+        class Orange {
+            constructor(x, y, radius) {
+                this.x = x;
+                this.y = y;
+                this.radius = radius;
+                this.maxHp = 100;
+                this.hp = 100;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+
+                // ظل البرتقالة
+                ctx.beginPath();
+                ctx.ellipse(0, this.radius - 5, this.radius * 0.8, 12, 0, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+                ctx.fill();
+
+                // جسم البرتقالة (تدرج لوني 3D)
+                let grad = ctx.createRadialGradient(-this.radius * 0.3, -this.radius * 0.3, 5, 0, 0, this.radius);
+                grad.addColorStop(0, '#ffc048');
+                grad.addColorStop(0.7, '#ff9f43');
+                grad.addColorStop(1, '#ee5253');
+
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = grad;
+                ctx.fill();
+
+                // أوراق الشجر الخضراء
+                ctx.fillStyle = '#10ac84';
+                // ورقة يمين
+                ctx.beginPath();
+                ctx.ellipse(12, -this.radius + 2, 16, 8, Math.PI / 4, 0, Math.PI * 2);
+                ctx.fill();
+                // ورقة شمال
+                ctx.beginPath();
+                ctx.ellipse(-12, -this.radius + 2, 16, 8, -Math.PI / 4, 0, Math.PI * 2);
+                ctx.fill();
+
+                // غصن صغير
+                ctx.fillStyle = '#576574';
+                ctx.fillRect(-2, -this.radius - 8, 4, 10);
+
+                // عيون وابتسامة كيوت للبرتقالة
+                if (this.hp > 30) {
+                    // عين يمين ويسار
+                    ctx.fillStyle = '#222';
+                    ctx.beginPath();
+                    ctx.arc(-12, -5, 4, 0, Math.PI * 2);
+                    ctx.arc(12, -5, 4, 0, Math.PI * 2);
+                    ctx.fill();
+                    // ابتسامة
+                    ctx.beginPath();
+                    ctx.arc(0, 5, 10, 0.1 * Math.PI, 0.9 * Math.PI);
+                    ctx.lineWidth = 3;
+                    ctx.strokeStyle = '#222';
+                    ctx.stroke();
+                } else {
+                    // عيون مصدومة عند انخفاض الصحة
+                    ctx.strokeStyle = '#222';
+                    ctx.lineWidth = 3;
+                    // X عين 1
+                    ctx.beginPath(); ctx.moveTo(-16, -9); ctx.lineTo(-8, -1); ctx.moveTo(-8, -9); ctx.lineTo(-16, -1); ctx.stroke();
+                    // X عين 2
+                    ctx.beginPath(); ctx.moveTo(8, -9); ctx.lineTo(16, -1); ctx.moveTo(16, -9); ctx.lineTo(8, -1); ctx.stroke();
+                    // فم مفتوح مصدوم
+                    ctx.beginPath();
+                    ctx.arc(0, 8, 6, 0, Math.PI * 2);
+                    ctx.fillStyle = '#222';
+                    ctx.fill();
+                }
+
+                ctx.restore();
+            }
+        }
+
+        // النحلة (الأعداء)
+        class Bee {
+            constructor(speed) {
+                this.radius = 16;
+                this.speed = speed;
+                this.angle = 0;
+                this.wingAngle = 0;
+                this.state = 'orbit'; // 'orbit' أو 'attack'
+                this.orbitTimer = Math.random() * 120 + 60; // وقت اللف قبل الهجوم
+
+                // تحديد نقطة العشوائية للظهور خارج الشاشة
+                const side = Math.floor(Math.random() * 4);
+                if (side === 0) { this.x = Math.random() * canvas.width; this.y = -30; }
+                else if (side === 1) { this.x = canvas.width + 30; this.y = Math.random() * canvas.height; }
+                else if (side === 2) { this.x = Math.random() * canvas.width; this.y = canvas.height + 30; }
+                else { this.x = -30; this.y = Math.random() * canvas.height; }
+            }
+
+            update() {
+                let targetX = orange.x;
+                let targetY = orange.y;
+
+                // ذكاء النحلة: تلف حول البرتقالة لفترة ثم تهجم فجأة
+                if (this.state === 'orbit') {
+                    this.orbitTimer--;
+                    let dx = this.x - orange.x;
+                    let dy = this.y - orange.y;
+                    let dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist > 160) {
+                        // الاقتراب لمحيط الدوران
+                        this.x += (orange.x - this.x) * 0.02 * (this.speed / 2);
+                        this.y += (orange.y - this.y) * 0.02 * (this.speed / 2);
+                    } else {
+                        // الحركة في مسار دائري مفاجئ
+                        let angle = Math.atan2(dy, dx) + 0.05 * (this.speed / 2);
+                        this.x = orange.x + Math.cos(angle) * dist;
+                        this.y = orange.y + Math.sin(angle) * dist;
+                    }
+
+                    if (this.orbitTimer <= 0) {
+                        this.state = 'attack';
+                    }
+                } else {
+                    // هجوم مباشر ومفاجئ نحو البرتقالة
+                    let dx = targetX - this.x;
+                    let dy = targetY - this.y;
+                    let dist = Math.sqrt(dx * dx + dy * dy);
+
+                    this.x += (dx / dist) * (this.speed * 1.4);
+                    this.y += (dy / dist) * (this.speed * 1.4);
+                }
+
+                // حساب زاوية دوران جسم النحلة حسب اتجاه الحركة
+                this.angle = Math.atan2(orange.y - this.y, orange.x - this.x);
+                this.wingAngle += 0.4; // حركة رفرفة الأجنحة
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.angle);
+
+                // أجنحة شفافة رفافة
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+                let wingShift = Math.sin(this.wingAngle) * 8;
+                ctx.beginPath();
+                ctx.ellipse(0, -10 + wingShift / 2, 6, 12, Math.PI / 4, 0, Math.PI * 2);
+                ctx.ellipse(0, 10 - wingShift / 2, 6, 12, -Math.PI / 4, 0, Math.PI * 2);
+                ctx.fill();
+
+                // جسم النحلة (أصفر مخطط بأسود)
+                ctx.beginPath();
+                ctx.ellipse(0, 0, this.radius, this.radius * 0.7, 0, 0, Math.PI * 2);
+                ctx.fillStyle = '#feca57';
+                ctx.fill();
+
+                // خطوط سوداء
+                ctx.strokeStyle = '#222';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(-4, -8); ctx.lineTo(-4, 8);
+                ctx.moveTo(4, -8); ctx.lineTo(4, 8);
+                ctx.stroke();
+
+                // أبرة اللسعة خلف النحلة
+                ctx.fillStyle = '#ee5253';
+                ctx.beginPath();
+                ctx.moveTo(-this.radius, -3);
+                ctx.lineTo(-this.radius - 6, 0);
+                ctx.lineTo(-this.radius, 3);
+                ctx.fill();
+
+                ctx.restore();
+            }
+        }
+
+        // المضرب / الشبكة (أداة اللاعب)
+        class Swatter {
+            constructor() {
+                this.radius = 35;
+            }
+
+            draw() {
+                if (mouse.x < 0) return;
+
+                ctx.save();
+                ctx.translate(mouse.x, mouse.y);
+
+                // تأثير الضربة عند الضغط
+                if (mouse.isSwinging) {
+                    ctx.beginPath();
+                    ctx.arc(0, 0, this.radius + 15, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(255, 159, 67, 0.3)';
+                    ctx.fill();
+                }
+
+                // حلقة المضرب الخارجية
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+                ctx.strokeStyle = mouse.isSwinging ? '#ee5253' : '#ff9f43';
+                ctx.lineWidth = 4;
+                ctx.stroke();
+
+                // شبكة المضرب الداخلية
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(-this.radius + 5, 0); ctx.lineTo(this.radius - 5, 0);
+                ctx.moveTo(0, -this.radius + 5); ctx.lineTo(0, this.radius - 5);
+                ctx.moveTo(-this.radius * 0.7, -this.radius * 0.7); ctx.lineTo(this.radius * 0.7, this.radius * 0.7);
+                ctx.moveTo(this.radius * 0.7, -this.radius * 0.7); ctx.lineTo(-this.radius * 0.7, this.radius * 0.7);
+                ctx.stroke();
+
+                // نقطة منتصف تصويب المضرب
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.arc(0, 0, 4, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.restore();
+            }
+        }
+
+        // الجسيمات الشفافة والمؤثرات الانفجارية (Particles)
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.radius = Math.random() * 4 + 2;
+                this.color = color || '#feca57';
+                this.vx = (Math.random() - 0.5) * 8;
+                this.vy = (Math.random() - 0.5) * 8;
+                this.alpha = 1;
+                this.decay = Math.random() * 0.03 + 0.02;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.alpha -= this.decay;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, this.alpha);
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        // النصوص العائمة (Floating Score / Combo Text)
+        class FloatingText {
+            constructor(x, y, text, color) {
+                this.x = x;
+                this.y = y;
+                this.text = text;
+                this.color = color || '#ff9f43';
+                this.alpha = 1;
+                this.vy = -2;
+            }
+
+            update() {
+                this.y += this.vy;
+                this.alpha -= 0.02;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, this.alpha);
+                ctx.font = 'bold 20px Segoe UI, sans-serif';
+                ctx.fillStyle = this.color;
+                ctx.textAlign = 'center';
+                ctx.fillText(this.text, this.x, this.y);
+                ctx.restore();
+            }
+        }
+
+        /* ==========================================================================
+           5. عناصر المصفوفات والمتغيرات التشغيلية
+           ========================================================================== */
+        let orange = new Orange(window.innerWidth / 2, window.innerHeight / 2, 45);
+        let swatter = new Swatter();
+        let bees = [];
+        let particles = [];
+        let floatingTexts = [];
+        let spawnTimer = null;
+
+        /* ==========================================================================
+           6. إدارة المدخلات والتحكم (Input Handling)
+           ========================================================================== */
+        function updateMousePos(e) {
+            const rect = canvas.getBoundingClientRect();
+            if (e.touches && e.touches[0]) {
+                mouse.x = e.touches[0].clientX - rect.left;
+                mouse.y = e.touches[0].clientY - rect.top;
+            } else {
+                mouse.x = e.clientX - rect.left;
+                mouse.y = e.clientY - rect.top;
+            }
+        }
+
+        function handleSwing() {
+            if (gameState !== 'PLAYING') return;
+
+            sfx.init();
+            mouse.isSwinging = true;
+            sfx.playSwat();
+
+            setTimeout(() => { mouse.isSwinging = false; }, 100);
+
+            // فحص التصادم عند الضرب
+            checkHits();
+        }
+
+        window.addEventListener('mousemove', updateMousePos);
+        window.addEventListener('touchmove', (e) => { updateMousePos(e); e.preventDefault(); }, { passive: false });
+
+        window.addEventListener('mousedown', handleSwing);
+        window.addEventListener('touchstart', (e) => { updateMousePos(e); handleSwing(); }, { passive: false });
+
+        window.addEventListener('resize', resizeCanvas);
+
+        /* ==========================================================================
+           7. المنطق التكراري وإدارة اللعبة (Game Logic & Mechanics)
+           ========================================================================== */
+        function setDifficulty(diff) {
+            selectedDifficulty = diff;
+            document.querySelectorAll('.btn-diff').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+        }
+
+        function spawnBee() {
+            if (gameState !== 'PLAYING') return;
+            let config = diffSettings[selectedDifficulty];
+            
+            // عدم تجاوز الحد الأقصى للنحل في الشاشة
+            if (bees.length < config.maxBees + Math.floor(currentWave * 1.5)) {
+                let speed = config.beeSpeed + (currentWave * 0.2);
+                bees.push(new Bee(speed));
+            }
+        }
+
+        function checkHits() {
+            for (let i = bees.length - 1; i >= 0; i--) {
+                let bee = bees[i];
+                let dx = mouse.x - bee.x;
+                let dy = mouse.y - bee.y;
+                let dist = Math.sqrt(dx * dx + dy * dy);
+
+                // إذا كان المضرب يلمس النحلة
+                if (dist < swatter.radius + bee.radius) {
+                    // القضاء على النحلة
+                    createExplosion(bee.x, bee.y, '#feca57');
+                    bees.splice(i, 1);
+                    sfx.playBeeHit();
+
+                    // حساب الكومبو والنقاط
+                    comboCount++;
+                    clearTimeout(comboTimer);
+                    comboTimer = setTimeout(() => { comboCount = 0; }, 1200);
+
+                    let addedScore = 10;
+                    if (comboCount >= 3) {
+                        addedScore += comboCount * 5;
+                        sfx.playCombo();
+                        floatingTexts.push(new FloatingText(bee.x, bee.y - 15, `COMBO x${comboCount}! +${addedScore}`, '#1dd1a1'));
+                    } else {
+                        floatingTexts.push(new FloatingText(bee.x, bee.y - 15, `+${addedScore}`, '#ff9f43'));
+                    }
+
+                    score += addedScore;
+                    scoreText.innerText = score;
+
+                    if (score > bestScore) {
+                        bestScore = score;
+                        bestScoreText.innerText = bestScore;
+                        localStorage.setItem('orange_defender_best', bestScore);
+                    }
+                }
+            }
+        }
+
+        function createExplosion(x, y, color) {
+            for (let i = 0; i < 15; i++) {
+                particles.push(new Particle(x, y, color));
+            }
+        }
+
+        function triggerScreenShake() {
+            screenShakeTime = 12; // إطار اهتزاز
+        }
+
+        function updateGameTime() {
+            gameTime++;
+            let mins = Math.floor(gameTime / 60).toString().padStart(2, '0');
+            let secs = (gameTime % 60).toString().padStart(2, '0');
+            timerText.innerText = `${mins}:${secs}`;
+
+            // زيادة الموجة والصعوبة كل 30 ثانية
+            if (gameTime % 30 === 0) {
+                currentWave++;
+                waveText.innerText = currentWave;
+                floatingTexts.push(new FloatingText(orange.x, orange.y - 60, `الموجة ${currentWave}! ⚡`, '#54a0ff'));
+            }
+        }
+
+        function startGame() {
+            sfx.init();
+            resizeCanvas();
+
+            // إعطاء القيم الافتراضية للبداية
+            gameState = 'PLAYING';
+            score = 0;
+            currentWave = 1;
+            gameTime = 0;
+            comboCount = 0;
+            orange.hp = orange.maxHp;
+
+            bees = [];
+            particles = [];
+            floatingTexts = [];
+
+            // تحديث الواجهة
+            scoreText.innerText = '0';
+            bestScoreText.innerText = bestScore;
+            waveText.innerText = '1';
+            timerText.innerText = '00:00';
+            hpFill.style.width = '100%';
+            hpFill.style.background = 'linear-gradient(90deg, #10ac84, #1dd1a1)';
+
+            startScreen.classList.add('hidden');
+            gameoverScreen.classList.add('hidden');
+
+            // إيقاف أي مؤقتات قديمة وإطلاق مؤقتات جديدة
+            clearInterval(spawnTimer);
+            clearInterval(timerInterval);
+
+            let config = diffSettings[selectedDifficulty];
+            spawnTimer = setInterval(spawnBee, config.spawnInterval);
+            timerInterval = setInterval(updateGameTime, 1000);
+
+            // بداية موجة بـ 3 نحلات
+            for (let i = 0; i < 3; i++) {
+                spawnBee();
+            }
+        }
+
+        function gameOver() {
+            gameState = 'GAMEOVER';
+            clearInterval(spawnTimer);
+            clearInterval(timerInterval);
+            sfx.playGameOver();
+
+            // تعبئة إحصائيات شاشة النهاية
+            document.getElementById('go-score').innerText = score;
+            document.getElementById('go-best').innerText = bestScore;
+            document.getElementById('go-time').innerText = timerText.innerText;
+            document.getElementById('go-wave').innerText = currentWave;
+
+            gameoverScreen.classList.remove('hidden');
+        }
+
+        /* ==========================================================================
+           8. حلقة اللعبة والتحديث المستمر (Game Loop & Rendering)
+           ========================================================================== */
+        function drawBackground() {
+            // خلفية السماء والحديقة التدرجية
+            let bgGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            bgGrad.addColorStop(0, '#0f172a');
+            bgGrad.addColorStop(0.6, '#1e293b');
+            bgGrad.addColorStop(1, '#0f5132');
+            ctx.fillStyle = bgGrad;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // عناصر جمالية خلفية (سحب شفافة/عشب بسيط)
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
+            ctx.beginPath();
+            ctx.arc(canvas.width * 0.2, canvas.height * 0.3, 120, 0, Math.PI * 2);
+            ctx.arc(canvas.width * 0.8, canvas.height * 0.2, 160, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function gameLoop() {
+            ctx.save();
+
+            // تأثير اهتزاز الشاشة عند إصابة البرتقالة
+            if (screenShakeTime > 0) {
+                let dx = (Math.random() - 0.5) * 12;
+                let dy = (Math.random() - 0.5) * 12;
+                ctx.translate(dx, dy);
+                screenShakeTime--;
+            }
+
+            // رسم الخلفية
+            drawBackground();
+
+            if (gameState === 'PLAYING' || gameState === 'GAMEOVER') {
+                // 1. رسم البرتقالة في المنتصف
+                orange.draw();
+
+                // 2. تحديث ورسم النحل
+                for (let i = bees.length - 1; i >= 0; i--) {
+                    let bee = bees[i];
+                    bee.update();
+                    bee.draw();
+
+                    // فحص تصادم النحلة مع البرتقالة
+                    let dx = bee.x - orange.x;
+                    let dy = bee.y - orange.y;
+                    let dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < orange.radius + bee.radius) {
+                        // لسعة البرتقالة
+                        let dmg = diffSettings[selectedDifficulty].dmg;
+                        orange.hp -= dmg;
+                        if (orange.hp < 0) orange.hp = 0;
+
+                        // تحديث شريط الصحة
+                        let hpPercent = (orange.hp / orange.maxHp) * 100;
+                        hpFill.style.width = `${hpPercent}%`;
+                        if (hpPercent < 30) {
+                            hpFill.style.background = 'linear-gradient(90deg, #ee5253, #ff6b6b)';
+                        } else if (hpPercent < 60) {
+                            hpFill.style.background = 'linear-gradient(90deg, #feca57, #ff9f43)';
+                        }
+
+                        // تأثيرات الضرر
+                        sfx.playDamage();
+                        triggerScreenShake();
+                        createExplosion(bee.x, bee.y, '#ee5253');
+                        floatingTexts.push(new FloatingText(bee.x, bee.y, `-${dmg} HP`, '#ee5253'));
+
+                        // حذف النحلة بعد اللسعة
+                        bees.splice(i, 1);
+
+                        // فحص انتهاء الصحة
+                        if (orange.hp <= 0 && gameState === 'PLAYING') {
+                            gameOver();
+                        }
+                    }
+                }
+
+                // 3. تحديث ورسم الجسيمات الشفافة الانفجارية
+                for (let i = particles.length - 1; i >= 0; i--) {
+                    let p = particles[i];
+                    p.update();
+                    p.draw();
+                    if (p.alpha <= 0) particles.splice(i, 1);
+                }
+
+                // 4. تحديث ورسم النصوص العائمة
+                for (let i = floatingTexts.length - 1; i >= 0; i--) {
+                    let ft = floatingTexts[i];
+                    ft.update();
+                    ft.draw();
+                    if (ft.alpha <= 0) floatingTexts.splice(i, 1);
+                }
+
+                // 5. رسم المضرب في موقع الكورسر
+                swatter.draw();
+            }
+
+            ctx.restore();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // إعداد البداية للـ Canvas وبدء الحلقة
+        resizeCanvas();
+        requestAnimationFrame(gameLoop);
+    </script>
+</body>
+</html>
