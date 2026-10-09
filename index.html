@@ -1,0 +1,950 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Orange Defender | حماية البرتقالة</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { width: 100%; height: 100%; overflow: hidden; font-family: 'Segoe UI', Tahoma, sans-serif; }
+  body { background: #0b1220; display: flex; align-items: center; justify-content: center; user-select: none; }
+  #game-container { position: relative; width: 100vw; height: 100vh; overflow: hidden; cursor: crosshair; }
+  canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+
+  /* ============ HUD ============ */
+  #hud { position: absolute; inset: 0; pointer-events: none; padding: 14px 18px; opacity: 0; transition: opacity .3s; }
+  #hud.active { opacity: 1; }
+  .hud-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+  .stat { background: rgba(0,0,0,.35); backdrop-filter: blur(6px); border: 1px solid rgba(255,255,255,.15);
+          border-radius: 12px; padding: 8px 14px; color: #fff; font-weight: 700; font-size: 15px;
+          display: flex; align-items: center; gap: 6px; text-shadow: 0 2px 4px rgba(0,0,0,.5); }
+  .stat .label { font-size: 11px; opacity: .7; font-weight: 500; }
+  .stat .val { font-size: 18px; color: #FFD54F; }
+
+  #hpWrap { position: absolute; left: 50%; top: 16px; transform: translateX(-50%);
+            width: min(320px, 70vw); background: rgba(0,0,0,.4); border: 1px solid rgba(255,255,255,.15);
+            border-radius: 999px; padding: 4px; backdrop-filter: blur(6px); }
+  #hpBar { height: 14px; border-radius: 999px;
+           background: linear-gradient(90deg, #ff3d3d, #ff9e3d, #ffd93d);
+           width: 100%; transition: width .2s; box-shadow: 0 0 12px rgba(255,120,60,.6); }
+
+  /* ============ Screens ============ */
+  .screen { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
+            justify-content: center; gap: 18px; padding: 24px; text-align: center; color: #fff;
+            background: radial-gradient(circle at 50% 40%, rgba(20,30,60,.55), rgba(5,8,18,.92));
+            backdrop-filter: blur(4px); transition: opacity .35s, transform .35s; z-index: 10; }
+  .screen.hidden { opacity: 0; pointer-events: none; transform: scale(1.05); }
+
+  .title { font-size: clamp(34px, 8vw, 64px); font-weight: 900; line-height: 1.1; letter-spacing: 1px;
+           background: linear-gradient(180deg, #ffd54f, #ff8a00 60%, #ff5722);
+           -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+           filter: drop-shadow(0 6px 18px rgba(255,140,0,.5)); }
+  .subtitle { font-size: clamp(13px, 3.5vw, 17px); opacity: .85; max-width: 500px; line-height: 1.7; }
+
+  .diff-row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 6px; }
+  .diff { background: rgba(255,255,255,.08); border: 2px solid rgba(255,255,255,.18); color: #fff;
+          padding: 10px 22px; border-radius: 12px; font-weight: 700; font-size: 15px;
+          cursor: pointer; transition: all .2s; font-family: inherit; }
+  .diff:hover { background: rgba(255,255,255,.15); transform: translateY(-2px); }
+  .diff.selected { background: linear-gradient(135deg, #ff8a00, #ffb300); border-color: #ffd54f;
+                   color: #1a1a1a; box-shadow: 0 6px 22px rgba(255,140,0,.5); }
+
+  .btn { background: linear-gradient(135deg, #ff8a00, #ff5722); border: none; color: #fff;
+         padding: 14px 44px; font-size: 18px; font-weight: 800; border-radius: 14px;
+         cursor: pointer; font-family: inherit; letter-spacing: .5px;
+         box-shadow: 0 8px 26px rgba(255,90,0,.45), inset 0 -3px 0 rgba(0,0,0,.2);
+         transition: transform .15s, box-shadow .2s; }
+  .btn:hover { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(255,90,0,.55); }
+  .btn:active { transform: translateY(1px) scale(.98); }
+  .btn.secondary { background: rgba(255,255,255,.1); box-shadow: none; border: 2px solid rgba(255,255,255,.2); }
+
+  .over-stats { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; margin-top: 4px; }
+  .over-card { background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.15);
+               border-radius: 14px; padding: 12px 22px; min-width: 110px; }
+  .over-card .k { font-size: 12px; opacity: .7; }
+  .over-card .v { font-size: 26px; font-weight: 900; color: #FFD54F; margin-top: 2px; }
+
+  .new-best { color: #4ade80; font-weight: 800; font-size: 16px; animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .6; transform: scale(1.06); } }
+  .hint { font-size: 13px; opacity: .6; margin-top: 4px; }
+
+  /* ============ Combo Popup ============ */
+  #comboPop { position: absolute; left: 50%; top: 30%; pointer-events: none; z-index: 5;
+              transform: translate(-50%, -50%) scale(0); opacity: 0; color: #ffd54f;
+              font-weight: 900; font-size: 44px; transition: transform .25s cubic-bezier(.3,1.6,.5,1), opacity .4s;
+              text-shadow: 0 0 20px rgba(255,180,0,.9), 0 4px 10px rgba(0,0,0,.5); }
+  #comboPop.show { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  #comboPop.fade { transform: translate(-50%, -80%) scale(1); opacity: 0; }
+</style>
+</head>
+<body>
+<div id="game-container">
+  <canvas id="game"></canvas>
+
+  <!-- HUD -->
+  <div id="hud">
+    <div class="hud-top">
+      <div class="stat"><span class="label">النقاط</span><span class="val" id="scoreVal">0</span></div>
+      <div class="stat"><span class="label">الوقت</span><span class="val" id="timeVal">0:00</span></div>
+      <div class="stat"><span class="label">أفضل</span><span class="val" id="bestVal">0</span></div>
+    </div>
+    <div id="hpWrap"><div id="hpBar"></div></div>
+  </div>
+
+  <div id="comboPop"></div>
+
+  <!-- Start Screen -->
+  <div class="screen" id="startScreen">
+    <div class="title">🍊 Orange Defender</div>
+    <div class="subtitle">احمِ البرتقالة من موجات النحل! حرّك الماوس أو إصبعك لتدوير المضرب حول البرتقالة، واضرب كل نحلة تقترب.</div>
+    <div class="diff-row">
+      <button class="diff" data-diff="easy">سهل</button>
+      <button class="diff selected" data-diff="normal">عادي</button>
+      <button class="diff" data-diff="hard">صعب</button>
+    </div>
+    <button class="btn" id="startBtn">ابدأ اللعب 🎮</button>
+    <div class="hint">كمبيوتر: حرّك الماوس • موبايل: المس وحرّك إصبعك</div>
+  </div>
+
+  <!-- Game Over Screen -->
+  <div class="screen hidden" id="overScreen">
+    <div class="title" style="font-size: clamp(28px,7vw,52px)">انتهت اللعبة 💥</div>
+    <div id="newBestWrap"></div>
+    <div class="over-stats">
+      <div class="over-card"><div class="k">النقاط</div><div class="v" id="finalScore">0</div></div>
+      <div class="over-card"><div class="k">أفضل نتيجة</div><div class="v" id="finalBest">0</div></div>
+      <div class="over-card"><div class="k">صمدت</div><div class="v" id="finalTime">0:00</div></div>
+    </div>
+    <button class="btn" id="retryBtn">العب تاني 🔄</button>
+    <button class="btn secondary" id="menuBtn">القائمة الرئيسية</button>
+  </div>
+</div>
+
+<script>
+/* =========================================================
+   ORANGE DEFENDER - حماية البرتقالة من النحل
+   الأقسام:
+   1) Setup       - إعداد الـ Canvas
+   2) Assets      - دوال الرسم (خلفية، برتقالة، نحلة، مضرب)
+   3) Entities    - كلاسات Bee و Particle
+   4) Game State  - حالة اللعبة
+   5) Input       - التحكم (ماوس + تاتش)
+   6) Game Loop   - التحديث والرسم
+   7) UI          - الواجهة
+   8) Audio       - Web Audio API
+   ========================================================= */
+
+/* ================= 1) SETUP ================= */
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+let W = 0, H = 0, CX = 0, CY = 0;
+
+// أبعاد اللعبة (تتحدث عند الـ resize)
+let ORANGE_R = 45;        // نصف قطر البرتقالة
+let PADDLE_R = 105;       // نصف قطر مدار المضرب
+let PADDLE_HIT_R = 34;    // سماكة منطقة الضرب
+const PADDLE_ARC = 0.55;  // نصف عرض قوس المضرب (بالراديان)
+
+function resizeCanvas() {
+  const DPR = Math.min(window.devicePixelRatio || 1, 2);
+  const rect = canvas.getBoundingClientRect();
+  canvas.width  = Math.floor(rect.width  * DPR);
+  canvas.height = Math.floor(rect.height * DPR);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  W = rect.width;
+  H = rect.height;
+  CX = W / 2;
+  CY = H / 2;
+
+  // أحجام نسبية حسب الشاشة
+  ORANGE_R     = Math.max(34, Math.min(W, H) * 0.075);
+  PADDLE_R     = ORANGE_R * 2.35;
+  PADDLE_HIT_R = ORANGE_R * 0.75;
+}
+window.addEventListener('resize', resizeCanvas);
+window.addEventListener('orientationchange', () => setTimeout(resizeCanvas, 200));
+
+/* ================= 8) AUDIO ================= */
+let audioCtx = null;
+function initAudio() {
+  if (audioCtx) return;
+  try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) { audioCtx = null; }
+}
+function playTone(freq, dur, type = 'sine', vol = 0.08, slideTo = null) {
+  if (!audioCtx) return;
+  const t = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t);
+  if (slideTo) osc.frequency.exponentialRampToValueAtTime(slideTo, t + dur);
+  gain.gain.setValueAtTime(vol, t);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  osc.connect(gain).connect(audioCtx.destination);
+  osc.start(t);
+  osc.stop(t + dur + 0.02);
+}
+const SFX = {
+  hit()   { playTone(920, 0.09, 'square', 0.06, 1400); playTone(1500, 0.07, 'sine', 0.04); },
+  miss()  { playTone(160, 0.35, 'sawtooth', 0.12, 60); },
+  combo() { playTone(1200, 0.12, 'sine', 0.09, 1800); playTone(1800, 0.1, 'triangle', 0.06); },
+  start() { playTone(520, 0.12, 'sine', 0.08, 880); },
+  over()  { playTone(400, 0.5, 'sawtooth', 0.14, 90); }
+};
+
+/* ================= 4) GAME STATE ================= */
+const DIFFS = {
+  easy:   { spawnInterval: 2.0, speedMult: 0.85, hpLoss: 8  },
+  normal: { spawnInterval: 1.5, speedMult: 1.0,  hpLoss: 10 },
+  hard:   { spawnInterval: 1.1, speedMult: 1.3,  hpLoss: 15 },
+};
+
+const game = {
+  state: 'menu',
+  difficulty: 'normal',
+  score: 0,
+  best: +(localStorage.getItem('orangeDefenderBest') || 0),
+  hp: 100, maxHp: 100,
+  time: 0,
+  spawnTimer: 0,
+  spawnInterval: 1.5,
+  speedMult: 1,
+  hpLoss: 10,
+  level: 1,
+  combo: 0,
+  comboTimer: 0,
+  screenShake: 0,
+  paddleAngle: -Math.PI / 2,
+  paddleTargetAngle: -Math.PI / 2,
+  paddleSwing: 0,
+  flashRed: 0,
+};
+
+let bees = [];
+let particles = [];
+
+/* ================= 2) ASSETS (الرسم) ================= */
+
+// ------- الخلفية -------
+function drawBackground(t) {
+  // سماء متدرجة
+  const sky = ctx.createLinearGradient(0, 0, 0, H);
+  sky.addColorStop(0,    '#4FC3F7');
+  sky.addColorStop(0.45, '#81D4FA');
+  sky.addColorStop(0.75, '#B3E5FC');
+  sky.addColorStop(1,    '#E1F5FE');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, W, H);
+
+  // شمس
+  const sunX = W * 0.82, sunY = H * 0.16;
+  const sunG = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, 140);
+  sunG.addColorStop(0,   'rgba(255,240,150,0.95)');
+  sunG.addColorStop(0.4, 'rgba(255,220,100,0.5)');
+  sunG.addColorStop(1,   'rgba(255,220,100,0)');
+  ctx.fillStyle = sunG;
+  ctx.beginPath(); ctx.arc(sunX, sunY, 140, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#FFF3B0';
+  ctx.beginPath(); ctx.arc(sunX, sunY, 34, 0, Math.PI * 2); ctx.fill();
+
+  // سحاب متحرك
+  drawCloud((t * 12) % (W + 220) - 110, H * 0.16, 1.0, 0.75);
+  drawCloud((t * 8 + 300) % (W + 260) - 130, H * 0.28, 0.8, 0.6);
+  drawCloud((t * 16 + 600) % (W + 240) - 120, H * 0.10, 1.2, 0.5);
+
+  // تلال خضراء
+  const hillY = H - Math.max(70, H * 0.13);
+  const hillG = ctx.createLinearGradient(0, hillY, 0, H);
+  hillG.addColorStop(0, '#7CB342');
+  hillG.addColorStop(1, '#33691E');
+  ctx.fillStyle = hillG;
+  ctx.beginPath();
+  ctx.moveTo(0, hillY + 20);
+  for (let x = 0; x <= W; x += 40) {
+    const y = hillY + Math.sin((x * 0.006) + t * 0.15) * 12;
+    ctx.lineTo(x, y);
+  }
+  ctx.lineTo(W, H); ctx.lineTo(0, H);
+  ctx.closePath(); ctx.fill();
+
+  // أرضية
+  ctx.fillStyle = '#2E7D32';
+  ctx.fillRect(0, H - 26, W, 26);
+}
+
+function drawCloud(x, y, scale, alpha) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(x, y, 26 * scale, 0, Math.PI * 2);
+  ctx.arc(x + 26 * scale, y - 8 * scale, 30 * scale, 0, Math.PI * 2);
+  ctx.arc(x + 56 * scale, y, 24 * scale, 0, Math.PI * 2);
+  ctx.arc(x + 28 * scale, y + 10 * scale, 26 * scale, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+// ------- البرتقالة -------
+function drawOrange(t) {
+  const r = ORANGE_R;
+  const bob = Math.sin(t * 2) * 2;
+
+  // هالة
+  const glow = ctx.createRadialGradient(CX, CY, r * 0.6, CX, CY, r * 2.2);
+  glow.addColorStop(0, 'rgba(255,180,60,0.35)');
+  glow.addColorStop(1, 'rgba(255,180,60,0)');
+  ctx.fillStyle = glow;
+  ctx.beginPath(); ctx.arc(CX, CY, r * 2.2, 0, Math.PI * 2); ctx.fill();
+
+  // ظل أرضي
+  ctx.fillStyle = 'rgba(0,0,0,0.15)';
+  ctx.beginPath();
+  ctx.ellipse(CX, CY + r * 0.95, r * 0.85, r * 0.2, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // جسم البرتقالة
+  const g = ctx.createRadialGradient(CX - r * 0.35, CY - r * 0.4 - bob, r * 0.1, CX, CY - bob, r * 1.1);
+  g.addColorStop(0,    '#FFE082');
+  g.addColorStop(0.35, '#FFB300');
+  g.addColorStop(0.8,  '#F57C00');
+  g.addColorStop(1,    '#E65100');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(CX, CY - bob, r, 0, Math.PI * 2); ctx.fill();
+
+  // خطوط سطح البرتقالة
+  ctx.save();
+  ctx.beginPath(); ctx.arc(CX, CY - bob, r, 0, Math.PI * 2); ctx.clip();
+  ctx.strokeStyle = 'rgba(200,80,0,0.18)';
+  ctx.lineWidth = 1.5;
+  for (let i = 0; i < 14; i++) {
+    const a = i * (Math.PI * 2 / 14);
+    ctx.beginPath();
+    ctx.moveTo(CX + Math.cos(a) * r * 0.15, CY - bob + Math.sin(a) * r * 0.15);
+    ctx.lineTo(CX + Math.cos(a) * r,        CY - bob + Math.sin(a) * r);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // لمعان
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.beginPath();
+  ctx.ellipse(CX - r * 0.38, CY - bob - r * 0.42, r * 0.28, r * 0.18, -0.6, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  ctx.beginPath();
+  ctx.ellipse(CX - r * 0.15, CY - bob - r * 0.6, r * 0.12, r * 0.08, -0.3, 0, Math.PI * 2);
+  ctx.fill();
+
+  // ورقة خضراء
+  ctx.save();
+  ctx.translate(CX + r * 0.05, CY - bob - r * 0.92);
+  ctx.rotate(-0.5 + Math.sin(t * 2.3) * 0.05);
+  const leafG = ctx.createLinearGradient(0, 0, 0, -r * 0.4);
+  leafG.addColorStop(0, '#43A047');
+  leafG.addColorStop(1, '#1B5E20');
+  ctx.fillStyle = leafG;
+  ctx.beginPath();
+  ctx.ellipse(0, -r * 0.2, r * 0.28, r * 0.13, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#1B5E20';
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(-r * 0.25, -r * 0.2);
+  ctx.lineTo( r * 0.25, -r * 0.2);
+  ctx.stroke();
+  ctx.restore();
+
+  // ساق
+  ctx.fillStyle = '#6D4C41';
+  ctx.beginPath();
+  ctx.ellipse(CX, CY - bob - r * 0.98, r * 0.07, r * 0.11, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// ------- النحلة -------
+function drawBee(bee, t) {
+  const r = bee.radius;
+
+  // هالة حمراء لو النحلة في وضع الهجوم
+  if (bee.phase === 'attack') {
+    ctx.fillStyle = `rgba(255,80,80,${0.25 + Math.sin(t * 10 + bee.wingPhase) * 0.15})`;
+    ctx.beginPath();
+    ctx.arc(bee.x, bee.y, r * 1.8, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.save();
+  ctx.translate(bee.x, bee.y);
+  ctx.rotate(bee.rotation + Math.PI); // رأس النحلة في اتجاه الحركة
+
+  // ظل
+  ctx.fillStyle = 'rgba(0,0,0,0.12)';
+  ctx.beginPath();
+  ctx.ellipse(0, r * 0.75, r * 0.85, r * 0.28, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // الأجنحة (ترفرف بسرعة)
+  const flap = Math.sin(t * 40 + bee.wingPhase) * 0.5 + 0.5;
+  ctx.fillStyle = `rgba(255,255,255,${0.35 + flap * 0.3})`;
+  ctx.strokeStyle = 'rgba(180,220,255,0.7)';
+  ctx.lineWidth = 1;
+  ctx.save();
+  ctx.translate(-r * 0.2, -r * 0.55);
+  ctx.rotate(-0.5 - flap * 0.3);
+  ctx.beginPath(); ctx.ellipse(0, 0, r * 0.55, r * 0.3, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.restore();
+  ctx.save();
+  ctx.translate(r * 0.2, -r * 0.55);
+  ctx.rotate(0.5 + flap * 0.3);
+  ctx.beginPath(); ctx.ellipse(0, 0, r * 0.55, r * 0.3, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.restore();
+
+  // الجسم
+  const bodyG = ctx.createRadialGradient(-r * 0.2, -r * 0.2, r * 0.2, 0, 0, r * 1.1);
+  bodyG.addColorStop(0, '#FFEB3B');
+  bodyG.addColorStop(1, '#F9A825');
+  ctx.fillStyle = bodyG;
+  ctx.beginPath(); ctx.ellipse(0, 0, r * 0.95, r * 0.75, 0, 0, Math.PI * 2); ctx.fill();
+
+  // خطوط سوداء
+  ctx.save();
+  ctx.beginPath(); ctx.ellipse(0, 0, r * 0.95, r * 0.75, 0, 0, Math.PI * 2); ctx.clip();
+  ctx.fillStyle = '#212121';
+  ctx.fillRect(-r * 0.15, -r, r * 0.22, r * 2);
+  ctx.fillRect( r * 0.25, -r, r * 0.22, r * 2);
+  ctx.restore();
+
+  // الرأس
+  ctx.fillStyle = '#1a1a1a';
+  ctx.beginPath(); ctx.arc(-r * 0.72, 0, r * 0.45, 0, Math.PI * 2); ctx.fill();
+
+  // العين
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.arc(-r * 0.82, -r * 0.12, r * 0.13, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#000';
+  ctx.beginPath(); ctx.arc(-r * 0.85, -r * 0.12, r * 0.06, 0, Math.PI * 2); ctx.fill();
+
+  // قرون الاستشعار
+  ctx.strokeStyle = '#1a1a1a';
+  ctx.lineWidth = Math.max(1, r * 0.09);
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(-r * 0.9, -r * 0.3);
+  ctx.quadraticCurveTo(-r * 1.2, -r * 0.7, -r * 1.35, -r * 0.55);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(-r * 0.85, r * 0.15);
+  ctx.quadraticCurveTo(-r * 1.2, r * 0.4, -r * 1.35, r * 0.25);
+  ctx.stroke();
+
+  // الإبرة
+  ctx.fillStyle = '#1a1a1a';
+  ctx.beginPath();
+  ctx.moveTo(r * 0.92, 0);
+  ctx.lineTo(r * 1.15, -r * 0.1);
+  ctx.lineTo(r * 1.15,  r * 0.1);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.restore();
+}
+
+// ------- المضرب -------
+function drawPaddle() {
+  const ang = game.paddleAngle;
+  const swing = game.paddleSwing;
+  const r = PADDLE_R + swing * 6;
+  const half = PADDLE_ARC;
+
+  // توهج خلفي
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.beginPath();
+  ctx.arc(CX, CY, r, ang - half, ang + half);
+  ctx.lineWidth = 30 + swing * 8;
+  ctx.lineCap = 'round';
+  const g = ctx.createRadialGradient(CX, CY, r - 20, CX, CY, r + 20);
+  g.addColorStop(0,   'rgba(120,230,255,0)');
+  g.addColorStop(0.5, `rgba(120,230,255,${0.35 + swing * 0.4})`);
+  g.addColorStop(1,   'rgba(120,230,255,0)');
+  ctx.strokeStyle = g;
+  ctx.stroke();
+  ctx.restore();
+
+  // القوس الأساسي
+  ctx.beginPath();
+  ctx.arc(CX, CY, r, ang - half, ang + half);
+  ctx.lineWidth = 18;
+  ctx.lineCap = 'round';
+  const grad = ctx.createLinearGradient(
+    CX + Math.cos(ang - half) * r, CY + Math.sin(ang - half) * r,
+    CX + Math.cos(ang + half) * r, CY + Math.sin(ang + half) * r
+  );
+  grad.addColorStop(0,   '#00E5FF');
+  grad.addColorStop(0.5, '#80D8FF');
+  grad.addColorStop(1,   '#00E5FF');
+  ctx.strokeStyle = grad;
+  ctx.shadowColor = '#00E5FF';
+  ctx.shadowBlur = 18 + swing * 20;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // خط أبيض داخلي
+  ctx.beginPath();
+  ctx.arc(CX, CY, r, ang - half, ang + half);
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = `rgba(255,255,255,${0.7 + swing * 0.3})`;
+  ctx.stroke();
+
+  // نقاط الأطراف
+  ctx.fillStyle = '#E0F7FA';
+  [ang - half, ang + half].forEach(a => {
+    ctx.beginPath();
+    ctx.arc(CX + Math.cos(a) * r, CY + Math.sin(a) * r, 6, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+/* ================= 3) ENTITIES ================= */
+
+// ---------- كلاس النحلة ----------
+class Bee {
+  constructor(x, y, speed) {
+    this.x = x;
+    this.y = y;
+    this.radius = Math.max(11, ORANGE_R * 0.32);
+    this.speed = speed;
+    this.phase = 'approach'; // approach -> orbit -> attack
+    this.orbitAngle = Math.atan2(y - CY, x - CX);
+    this.orbitDir = Math.random() < 0.5 ? 1 : -1;
+    this.orbitRadius = ORANGE_R * (3 + Math.random() * 1.6);
+    this.orbitTimer = 1.2 + Math.random() * 1.6;
+    this.wingPhase = Math.random() * Math.PI * 2;
+    this.rotation = this.orbitAngle;
+    this.attackSpeed = speed * 2.4;
+    this.dead = false;
+    this.targetOrbitAngle = this.orbitAngle + (Math.random() - 0.5) * 0.8;
+  }
+
+  update(dt) {
+    const dxC = CX - this.x, dyC = CY - this.y;
+    const distToCenter = Math.hypot(dxC, dyC);
+    let moveAngle;
+
+    if (this.phase === 'approach') {
+      // التوجه نحو نقطة على المدار
+      const tx = CX + Math.cos(this.targetOrbitAngle) * this.orbitRadius;
+      const ty = CY + Math.sin(this.targetOrbitAngle) * this.orbitRadius;
+      const tdx = tx - this.x, tdy = ty - this.y;
+      const td = Math.hypot(tdx, tdy);
+      moveAngle = Math.atan2(tdy, tdx);
+      if (td < 14) {
+        this.phase = 'orbit';
+        this.orbitAngle = Math.atan2(this.y - CY, this.x - CX);
+      } else {
+        this.x += Math.cos(moveAngle) * this.speed * dt;
+        this.y += Math.sin(moveAngle) * this.speed * dt;
+      }
+    } else if (this.phase === 'orbit') {
+      // الدوران حول البرتقالة
+      this.orbitAngle += this.orbitDir * (this.speed / this.orbitRadius) * 1.6 * dt;
+      this.x = CX + Math.cos(this.orbitAngle) * this.orbitRadius;
+      this.y = CY + Math.sin(this.orbitAngle) * this.orbitRadius;
+      moveAngle = this.orbitAngle + (this.orbitDir > 0 ? Math.PI / 2 : -Math.PI / 2);
+      this.orbitTimer -= dt;
+      if (this.orbitTimer <= 0) this.phase = 'attack';
+    } else {
+      // الهجوم المباشر
+      moveAngle = Math.atan2(CY - this.y, CX - this.x);
+      this.x += Math.cos(moveAngle) * this.attackSpeed * dt;
+      this.y += Math.sin(moveAngle) * this.attackSpeed * dt;
+    }
+
+    // دوران سلس نحو اتجاه الحركة
+    let diff = moveAngle - this.rotation;
+    while (diff >  Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    this.rotation += diff * Math.min(1, dt * 10);
+
+    // اصطدام بالبرتقالة
+    if (distToCenter < ORANGE_R + this.radius * 0.6) {
+      this.dead = true;
+      onBeeHitOrange(this);
+    }
+  }
+
+  draw(t) { drawBee(this, t); }
+}
+
+// ---------- كلاس الجزيئات ----------
+class Particle {
+  constructor(x, y, color) {
+    const a = Math.random() * Math.PI * 2;
+    const sp = 60 + Math.random() * 220;
+    this.x = x; this.y = y;
+    this.vx = Math.cos(a) * sp;
+    this.vy = Math.sin(a) * sp;
+    this.life = 0.5 + Math.random() * 0.5;
+    this.maxLife = this.life;
+    this.size = 2 + Math.random() * 4;
+    this.color = color;
+    this.gravity = 180;
+  }
+  update(dt) {
+    this.life -= dt;
+    this.x += this.vx * dt;
+    this.y += this.vy * dt;
+    this.vy += this.gravity * dt;
+    this.vx *= 0.98;
+    this.vy *= 0.98;
+  }
+  draw() {
+    const a = Math.max(0, this.life / this.maxLife);
+    ctx.globalAlpha = a;
+    ctx.fillStyle = this.color;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.size * a, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+}
+
+function spawnParticles(x, y, count, colors) {
+  for (let i = 0; i < count; i++) {
+    const c = colors[Math.floor(Math.random() * colors.length)];
+    particles.push(new Particle(x, y, c));
+  }
+}
+
+/* ================= 5) INPUT ================= */
+let mouseX = 0, mouseY = 0, mouseInside = false;
+
+function updatePointer(x, y) {
+  mouseX = x; mouseY = y;
+  mouseInside = true;
+}
+
+// ماوس
+canvas.addEventListener('mousemove', e => {
+  const r = canvas.getBoundingClientRect();
+  updatePointer(e.clientX - r.left, e.clientY - r.top);
+});
+canvas.addEventListener('mousedown', () => { initAudio(); doSwing(); });
+
+// تاتش
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  initAudio();
+  const r = canvas.getBoundingClientRect();
+  const t = e.touches[0];
+  if (t) updatePointer(t.clientX - r.left, t.clientY - r.top);
+  doSwing();
+}, { passive: false });
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  const r = canvas.getBoundingClientRect();
+  const t = e.touches[0];
+  if (t) updatePointer(t.clientX - r.left, t.clientY - r.top);
+}, { passive: false });
+
+// منع القائمة اليمنى
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+function doSwing() {
+  if (game.state !== 'playing') return;
+  game.paddleSwing = 1;
+}
+
+// حساب زاوية المضرب من موضع المؤشر
+function computePaddleTarget() {
+  if (!mouseInside) return;
+  const dx = mouseX - CX, dy = mouseY - CY;
+  if (Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
+  game.paddleTargetAngle = Math.atan2(dy, dx);
+}
+
+/* ================= 6) GAME LOGIC & LOOP ================= */
+
+function onBeeKilled(bee) {
+  // كومبو
+  game.combo++;
+  game.comboTimer = 2.0;
+  const bonus = Math.max(0, (game.combo - 1)) * 2;
+  game.score += 10 + bonus;
+
+  spawnParticles(bee.x, bee.y, 18, ['#FFEB3B', '#FBC02D', '#FF8F00', '#FFF59D', '#212121']);
+  game.screenShake = Math.max(game.screenShake, 4);
+  SFX.hit();
+
+  if (game.combo >= 3) {
+    showCombo(game.combo);
+    SFX.combo();
+    game.screenShake = Math.max(game.screenShake, 7);
+  }
+}
+
+function onBeeHitOrange(bee) {
+  if (game.state !== 'playing') return;
+  game.hp -= game.hpLoss;
+  game.combo = 0;
+  game.screenShake = 16;
+  game.flashRed = 0.6;
+  SFX.miss();
+  spawnParticles(bee.x, bee.y, 14, ['#FF7043', '#FF5722', '#FFAB91']);
+  if (game.hp <= 0) {
+    game.hp = 0;
+    endGame();
+  }
+}
+
+function spawnBee() {
+  const side = Math.floor(Math.random() * 4);
+  const pad = 60;
+  let x, y;
+  if (side === 0)      { x = Math.random() * W; y = -pad; }
+  else if (side === 1) { x = W + pad;           y = Math.random() * H; }
+  else if (side === 2) { x = Math.random() * W; y = H + pad; }
+  else                 { x = -pad;              y = Math.random() * H; }
+
+  const baseSpeed = Math.max(55, Math.min(W, H) * 0.11);
+  const speed = baseSpeed * game.speedMult;
+  bees.push(new Bee(x, y, speed));
+}
+
+// بدء اللعبة
+function startGame(diff) {
+  initAudio();
+  game.difficulty = diff;
+  const cfg = DIFFS[diff];
+  game.spawnInterval = cfg.spawnInterval;
+  game.speedMult    = cfg.speedMult;
+  game.hpLoss       = cfg.hpLoss;
+  game.hp = game.maxHp = 100;
+  game.score = 0;
+  game.time = 0;
+  game.spawnTimer = 0.6;
+  game.level = 1;
+  game.combo = 0;
+  game.comboTimer = 0;
+  game.screenShake = 0;
+  game.flashRed = 0;
+  game.paddleSwing = 0;
+  bees = [];
+  particles = [];
+  game.state = 'playing';
+
+  document.getElementById('startScreen').classList.add('hidden');
+  document.getElementById('overScreen').classList.add('hidden');
+  document.getElementById('hud').classList.add('active');
+  updateHUD();
+  SFX.start();
+}
+
+// نهاية اللعبة
+function endGame() {
+  game.state = 'gameover';
+  const isNew = game.score > game.best;
+  if (isNew) {
+    game.best = game.score;
+    localStorage.setItem('orangeDefenderBest', game.best);
+    document.getElementById('newBestWrap').innerHTML = '<div class="new-best">🏆 رقم قياسي جديد!</div>';
+  } else {
+    document.getElementById('newBestWrap').innerHTML = '';
+  }
+  document.getElementById('finalScore').textContent = game.score;
+  document.getElementById('finalBest').textContent  = game.best;
+  document.getElementById('finalTime').textContent  = formatTime(game.time);
+  document.getElementById('overScreen').classList.remove('hidden');
+  document.getElementById('hud').classList.remove('active');
+  SFX.over();
+}
+
+function backToMenu() {
+  game.state = 'menu';
+  bees = []; particles = [];
+  document.getElementById('startScreen').classList.remove('hidden');
+  document.getElementById('overScreen').classList.add('hidden');
+  document.getElementById('hud').classList.remove('active');
+}
+
+// ---------- التحديث ----------
+function update(dt, t) {
+  // تدوير المضرب نحو الهدف بسلاسة
+  computePaddleTarget();
+  let diff = game.paddleTargetAngle - game.paddleAngle;
+  while (diff >  Math.PI) diff -= Math.PI * 2;
+  while (diff < -Math.PI) diff += Math.PI * 2;
+  game.paddleAngle += diff * Math.min(1, dt * 18);
+
+  // أنيميشن ضربة
+  if (game.paddleSwing > 0) game.paddleSwing = Math.max(0, game.paddleSwing - dt * 3.5);
+  // اهتزاز الشاشة
+  if (game.screenShake > 0) game.screenShake = Math.max(0, game.screenShake - dt * 40);
+  // وميض أحمر
+  if (game.flashRed > 0) game.flashRed = Math.max(0, game.flashRed - dt * 1.5);
+
+  // الجزيئات تُحدَّث دائماً
+  for (let i = particles.length - 1; i >= 0; i--) {
+    particles[i].update(dt);
+    if (particles[i].life <= 0) particles.splice(i, 1);
+  }
+
+  if (game.state !== 'playing') return;
+
+  // المؤقت
+  game.time += dt;
+
+  // زيادة الصعوبة كل 30 ثانية
+  const newLevel = 1 + Math.floor(game.time / 30);
+  if (newLevel > game.level) {
+    game.level = newLevel;
+    game.speedMult *= 1.12;
+    game.spawnInterval = Math.max(0.4, game.spawnInterval * 0.92);
+    game.screenShake = Math.max(game.screenShake, 6);
+  }
+
+  // توليد النحل
+  game.spawnTimer -= dt;
+  if (game.spawnTimer <= 0) {
+    spawnBee();
+    game.spawnTimer = game.spawnInterval * (0.85 + Math.random() * 0.3);
+  }
+
+  // تحديث النحل + فحص تصادم المضرب
+  for (let i = bees.length - 1; i >= 0; i--) {
+    const b = bees[i];
+    b.update(dt);
+    if (b.dead) { bees.splice(i, 1); continue; }
+    if (game.state !== 'playing') break;
+
+    // فحص تصادم على شكل قوس (زاوية + مسافة)
+    const dxC = b.x - CX, dyC = b.y - CY;
+    const distC = Math.hypot(dxC, dyC);
+    if (distC > 0.01) {
+      let angDiff = Math.atan2(dyC, dxC) - game.paddleAngle;
+      while (angDiff >  Math.PI) angDiff -= Math.PI * 2;
+      while (angDiff < -Math.PI) angDiff += Math.PI * 2;
+      const angularTol = PADDLE_ARC + Math.atan2(b.radius, distC) * 0.9 + game.paddleSwing * 0.15;
+      const radialTol  = PADDLE_HIT_R * 1.4;
+      if (Math.abs(angDiff) < angularTol && Math.abs(distC - PADDLE_R) < radialTol) {
+        onBeeKilled(b);
+        bees.splice(i, 1);
+      }
+    }
+  }
+
+  // انتهاء الكومبو
+  if (game.comboTimer > 0) {
+    game.comboTimer -= dt;
+    if (game.comboTimer <= 0) game.combo = 0;
+  }
+
+  updateHUD();
+}
+
+// ---------- الرسم ----------
+function render(t) {
+  ctx.clearRect(0, 0, W, H);
+  drawBackground(t);
+
+  ctx.save();
+  // اهتزاز الشاشة للعناصر
+  if (game.screenShake > 0) {
+    const s = game.screenShake;
+    ctx.translate((Math.random() - 0.5) * s, (Math.random() - 0.5) * s);
+  }
+
+  // هالة حمراء تحذيرية لو HP قليلة
+  if (game.state === 'playing' && game.hp <= 30) {
+    const pulse = 0.15 + Math.sin(t * 6) * 0.1;
+    ctx.fillStyle = `rgba(255,0,0,${pulse})`;
+    ctx.fillRect(-20, -20, W + 40, H + 40);
+  }
+
+  drawOrange(t);
+  bees.forEach(b => b.draw(t));
+  if (game.state === 'playing') drawPaddle();
+  particles.forEach(p => p.draw());
+
+  ctx.restore();
+
+  // وميض أحمر عند الإصابة
+  if (game.flashRed > 0) {
+    ctx.fillStyle = `rgba(255,0,0,${game.flashRed * 0.35})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+}
+
+// ---------- حلقة اللعب ----------
+let lastTime = performance.now();
+let gameTime = 0;
+
+function loop(now) {
+  let dt = (now - lastTime) / 1000;
+  lastTime = now;
+  if (dt > 0.05) dt = 0.05; // clamp لمنع القفزات بعد التبويب
+  gameTime += dt;
+
+  update(dt, gameTime);
+  render(gameTime);
+
+  requestAnimationFrame(loop);
+}
+
+/* ================= 7) UI ================= */
+const scoreVal = document.getElementById('scoreVal');
+const timeVal  = document.getElementById('timeVal');
+const bestVal  = document.getElementById('bestVal');
+const hpBar    = document.getElementById('hpBar');
+const comboPop = document.getElementById('comboPop');
+
+function formatTime(s) {
+  s = Math.floor(s);
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${m}:${sec.toString().padStart(2, '0')}`;
+}
+
+function updateHUD() {
+  scoreVal.textContent = game.score;
+  timeVal.textContent  = formatTime(game.time);
+  bestVal.textContent  = game.best;
+  hpBar.style.width    = (game.hp / game.maxHp * 100) + '%';
+}
+
+let comboTimeout;
+function showCombo(n) {
+  comboPop.textContent = `COMBO x${n}!`;
+  comboPop.classList.remove('fade');
+  comboPop.classList.add('show');
+  clearTimeout(comboTimeout);
+  comboTimeout = setTimeout(() => {
+    comboPop.classList.remove('show');
+    comboPop.classList.add('fade');
+  }, 600);
+}
+
+/* ================= ربط الأزرار ================= */
+document.querySelectorAll('.diff').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.diff').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+    game.difficulty = btn.dataset.diff;
+  });
+});
+
+document.getElementById('startBtn').addEventListener('click', () => {
+  const sel = document.querySelector('.diff.selected');
+  startGame(sel ? sel.dataset.diff : 'normal');
+});
+document.getElementById('retryBtn').addEventListener('click', () => startGame(game.difficulty));
+document.getElementById('menuBtn').addEventListener('click', backToMenu);
+
+/* ================= الإقلاع ================= */
+resizeCanvas();
+updateHUD();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
